@@ -7,12 +7,16 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "hardhat/console.sol";
 
 error totalSupplyExceed();
+error pleaseSendTokenPrice();
 
 contract BrnToken is ERC20, ERC20Burnable, Ownable {
-    constructor() ERC20("TokenBurn", "TBT") {}
+    constructor() ERC20("TokenBurn", "TBT") {
+        _mint(address(this),50 ether);
+    }
 
     uint256 public supply = 100 ether;
     uint256 public burnfee = 200;
+    uint256 public tokenPrice = 1;
 
     function setburnAmount(uint256 amount) public {
         burnfee = amount;
@@ -40,4 +44,18 @@ contract BrnToken is ERC20, ERC20Burnable, Ownable {
         _transfer(owner, to, sendamount);
         return true;
     }
+		
+    function BuyToken(uint256 _amount)public payable{
+     if(msg.value < _amount*tokenPrice){
+        revert pleaseSendTokenPrice();
+    }
+      payable(address(this)).transfer(msg.value);  
+      IERC20(address(this)).transfer(msg.sender,_amount);
+    }
+   
+    receive() external payable { }
+    fallback() external payable { }
+    
+
 }
+
