@@ -2,60 +2,116 @@
 pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "hardhat/console.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
 
 error totalSupplyExceed();
 error pleaseSendTokenPrice();
+error pleaseEnterRightPersntage();
+error TransferFaild();
+error DontHaveEnoughBalance();
+error pleaseSendSlaePrice();
+contract BrnToken is ERC20,Ownable {
+    using Counters for Counters.Counter;    
+    Counters.Counter public listingId;
 
-contract BrnToken is ERC20, ERC20Burnable, Ownable {
-    constructor() ERC20("TokenBurn", "TBT") {
-        _mint(address(this),50 ether);
+
+    struct Sale{
+    uint256 tokens;
+    uint256 price;
+    address seller;
     }
 
     uint256 public supply = 100 ether;
     uint256 public burnfee = 200;
     uint256 public tokenPrice = 1;
 
-    function setburnAmount(uint256 amount) public {
-        burnfee = amount;
+    mapping(uint256=>Sale)public listing;
+
+
+    constructor() ERC20("TokenBurn", "TBT") {}
+
+
+    function setburnAmount(uint256 _amount) public onlyOwner {
+    if(_amount>1000){
+            revert pleaseEnterRightPersntage();
+        }
+        burnfee = _amount;
     }
 
     function burnPersontage(uint256 amount) public view returns (uint256) {
         return ((amount / 10000) * burnfee);
     }
 
-    function mint(uint256 amount) public {
-        if (totalSupply() + amount > supply) {
+    //minting payable function
+    function mint(address to, uint256 _amount) public payable {
+    if ((totalSupply() + _amount) > supply) {
             revert totalSupplyExceed();
         }
-        _mint(msg.sender, amount);
+    if(msg.value<(_amount*tokenPrice)){
+            revert pleaseSendTokenPrice();   
+        }
+        _mint(to, _amount);
     }
 
+    //transfer Function 
     function transfer(
         address to,
         uint256 amount
     ) public virtual override returns (bool) {
         uint256 temp = burnPersontage(amount);
         uint256 sendamount = amount - temp;
-        _burn(msg.sender, temp);
         address owner = _msgSender();
+        _burn(owner, temp);
         _transfer(owner, to, sendamount);
         return true;
     }
-		
-    function BuyToken(uint256 _amount)public payable{
-     if(msg.value < _amount*tokenPrice){
-        revert pleaseSendTokenPrice();
+    
+    //This is Tokens buying Function
+    function BuyToken(uint256 _listingId, uint256 _amount)public payable{
+        Sale memory sales = listing[_listingId];
+    if(msg.value < sales.price){
+        revert pleaseSendSlaePrice();
+    }    
+    (bool success,)=sales.seller.call{value:msg.value}("");
+    if(!success){
+        revert TransferFaild();
+    }  
+        address owner = _msgSender();
+        IERC20(address(this)).transferFrom(sales.seller,owner,_amount);
+        delete listing[_listingId];
     }
-      payable(address(this)).transfer(msg.value);  
-      IERC20(address(this)).transfer(msg.sender,_amount);
+
+    //This is withdraw Function, OnlyOwner Can call this Function
+    function withdraw()public onlyOwner{
+        (bool success,)=msg.sender.call{value:address(this).balance}("");
+        if(!success){
+        revert TransferFaild();
+        } 
+    }
+
+    //In this Function We can sale Our Tokens
+    function SellTokens(uint256 _tokens, uint256 price) public {
+    if(balanceOf(msg.sender) < _tokens){
+        revert DontHaveEnoughBalance();
+    }
+        approve(address(this),_tokens);
+        uint256 tokenId =listingId.current();
+        listing[tokenId]=Sale(_tokens,price,msg.sender);
+        listingId.increment();
+    }
+
+    //get All Listed Tokens
+    function ListedTokens()public view returns(Sale[] memory){
+        uint256 id = listingId.current();
+        Sale[] memory sales = new Sale[](id);
+    for(uint256 i=0; i<id; i++){
+        sales[i]=listing[i];
+    }
+        return sales;
     }
    
-    receive() external payable { }
-    fallback() external payable { }
-    
+
 
 }
 
